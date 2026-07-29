@@ -39,3 +39,32 @@ probe_resonance
 probe_trio
 gowiththeflow
 probe_web
+
+# ── not part of the foundation ───────────────────────────────────────────
+# Kept on disk: the Dario base is where stage 2 (documents through KK) comes
+# from. Out of git until it is actually wired in.
+FLOWLOG.md
+DARIO_README.md
+REBUILD_LOG.md
+REBUILD_PREREG.md
+RUNPOD_PLAN.md
+RUNPOD_PLAN_V2_FULL.md
+runpod_plan_v1.md
+runpod_plan_v2.md
+runpod_plan_v3.md
+dario.c
+dario_leo.c
+infer_v4.c
+kk_kernel.c
+kk_kernel.h
+sartre_kernel.c
+sartre_kernel.h
+leo_bpe_merges.h
+chain_dialogue.py
+dario_infer.py
+forum.py
+*.html
+aml/
+cmd/
+docs/
+tests/

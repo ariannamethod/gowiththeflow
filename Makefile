@@ -12,7 +12,7 @@ BLAS     = -DUSE_BLAS -DACCELERATE -DACCELERATE_NEW_LAPACK
 LDFLAGS  = -L/opt/homebrew/lib -lnotorch -framework Accelerate -lm
 
 LIBAML   = ariannamethod/libaml.a
-SLOTS    = slot_leo.o slot_yent.o slot_arianna.o
+SLOTS    = slot_janus.o slot_resonance.o
 
 .PHONY: all clean probes weights
 
@@ -24,15 +24,12 @@ $(LIBAML): ariannamethod/ariannamethod.c ariannamethod/ariannamethod.h
 	    -c ariannamethod/ariannamethod.c -o ariannamethod/ariannamethod.o
 	$(AR) rcs $@ ariannamethod/ariannamethod.o
 
-# ── one TU per voice ──
-slot_leo.o: slot_janus.c slot.h tools/yent_forward.h janus_v4_bpe_merges.h
-	$(CC) $(CFLAGS) $(INCLUDES) $(BLAS) -DSLOT_SYM=slot_leo -c $< -o $@
+# ── one TU per backend; instances are created at runtime ──
+slot_janus.o: slot_janus.c slot.h tools/yent_forward.h janus_v4_bpe_merges.h
+	$(CC) $(CFLAGS) $(INCLUDES) $(BLAS) -c $< -o $@
 
-slot_yent.o: slot_janus.c slot.h tools/yent_forward.h janus_v4_bpe_merges.h
-	$(CC) $(CFLAGS) $(INCLUDES) $(BLAS) -DSLOT_SYM=slot_yent -c $< -o $@
-
-slot_arianna.o: slot_resonance.c slot.h tools/resonance_forward.h tools/resonance_bpe_merges.h
-	$(CC) $(CFLAGS) $(INCLUDES) $(BLAS) -DSLOT_SYM=slot_arianna -c $< -o $@
+slot_resonance.o: slot_resonance.c slot.h tools/resonance_forward.h tools/resonance_bpe_merges.h
+	$(CC) $(CFLAGS) $(INCLUDES) $(BLAS) -c $< -o $@
 
 gowiththeflow.o: gowiththeflow.c slot.h
 	$(CC) $(CFLAGS) $(INCLUDES) $(BLAS) -c $< -o $@

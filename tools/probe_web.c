@@ -12,9 +12,6 @@
 #include "notorch.h"
 #include "ariannamethod.h"
 
-extern const SlotVT slot_leo;
-extern const SlotVT slot_yent;
-extern const SlotVT slot_arianna;
 
 static int argmax(const float *l, int n) {
     int bi = 0; for (int i = 1; i < n; i++) if (l[i] > l[bi]) bi = i; return bi;
@@ -25,13 +22,14 @@ int main(void) {
     nt_qmv_set_thread_min(262144);
 
     Slot s[3] = {
-        { .vt = &slot_leo,     .name = "leo",     .gguf = "weights/leo_janus176m_f16.gguf" },
-        { .vt = &slot_yent,    .name = "yent",    .gguf = "weights/yent_janus176m_f16.gguf" },
-        { .vt = &slot_arianna, .name = "arianna", .gguf = "weights/arianna_resonance_v3_f16.gguf" },
+        { .vt = &gwtf_janus_backend,     .name = "leo",     .gguf = "weights/leo_janus176m_f16.gguf" },
+        { .vt = &gwtf_janus_backend,    .name = "yent",    .gguf = "weights/yent_janus176m_f16.gguf" },
+        { .vt = &gwtf_resonance_backend, .name = "arianna", .gguf = "weights/arianna_resonance_v3_f16.gguf" },
     };
     for (int i = 0; i < 3; i++) {
-        if (s[i].vt->load(s[i].gguf)) { fprintf(stderr, "%s: load failed\n", s[i].name); return 1; }
-        s[i].vt->cfg(&s[i].V, &s[i].E, &s[i].H, &s[i].D, &s[i].B, &s[i].M, &s[i].T, &s[i].R);
+        s[i].inst = s[i].vt->create(s[i].gguf);
+        if (!s[i].inst) { fprintf(stderr, "%s: load failed\n", s[i].name); return 1; }
+        s[i].vt->cfg(s[i].inst, &s[i].V, &s[i].E, &s[i].H, &s[i].D, &s[i].B, &s[i].M, &s[i].T, &s[i].R);
     }
 
     /* 1. tokenizer round-trip — text is the only thing that crosses slots */
@@ -39,15 +37,15 @@ int main(void) {
     printf("=== tokenizer round-trip ===\n");
     for (int i = 0; i < 3; i++) {
         int t[64]; char back[256] = {0};
-        int n = s[i].vt->encode(probe_text, t, 64);
-        s[i].vt->detok(t, n, back, sizeof(back));
+        int n = s[i].vt->encode(s[i].inst, probe_text, t, 64);
+        s[i].vt->detok(s[i].inst, t, n, back, sizeof(back));
         printf("%-8s %2d tok  round-trip=%s  \"%s\"\n",
                s[i].name, n, strcmp(back, probe_text) == 0 ? "exact" : "DIFFERS", back);
     }
 
     /* 2. pull is zero before anything is injected */
     printf("\n=== pull before injection ===\n");
-    for (int i = 0; i < 3; i++) printf("%-8s |destiny|=%.6f\n", s[i].name, s[i].vt->pull());
+    for (int i = 0; i < 3; i++) printf("%-8s |destiny|=%.6f\n", s[i].name, s[i].vt->pull(s[i].inst));
 
     /* 3. Leo speaks; his sentence enters the other two as direction */
     const char *leo_says =
@@ -65,15 +63,15 @@ int main(void) {
         float *hid  = calloc((size_t)s[i].E, sizeof(float));
         if (!base || !inj || !zero || !hid) { fprintf(stderr, "oom\n"); return 1; }
 
-        s[i].vt->prefill(t, 4, base, hid);
+        s[i].vt->prefill(s[i].inst, t, 4, base, hid);
         memcpy(inj,  base, (size_t)s[i].V * sizeof(float));
         memcpy(zero, base, (size_t)s[i].V * sizeof(float));
 
-        s[i].vt->inject(leo_says);
-        float pull = s[i].vt->pull();
+        s[i].vt->inject(s[i].inst, leo_says);
+        float pull = s[i].vt->pull(s[i].inst);
 
-        s[i].vt->apply(inj,  5.0f, 2.0f);   /* alpha=5 pulls without echoing (arianna2arianna.sh:33-36) */
-        s[i].vt->apply(zero, 0.0f, 0.0f);   /* control: the tilt must switch fully off */
+        s[i].vt->apply(s[i].inst, inj,  5.0f, 2.0f);   /* alpha=5 pulls without echoing (arianna2arianna.sh:33-36) */
+        s[i].vt->apply(s[i].inst, zero, 0.0f, 0.0f);   /* control: the tilt must switch fully off */
 
         float dmax = 0, dzero = 0;
         for (int k = 0; k < s[i].V; k++) {
@@ -91,6 +89,6 @@ int main(void) {
         free(base); free(inj); free(zero); free(hid);
     }
 
-    for (int i = 0; i < 3; i++) s[i].vt->release();
+    for (int i = 0; i < 3; i++) s[i].vt->destroy(s[i].inst);
     return 0;
 }

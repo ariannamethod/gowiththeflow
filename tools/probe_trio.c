@@ -7,9 +7,6 @@
 #include "notorch.h"
 #include "ariannamethod.h"
 
-extern const SlotVT slot_leo;
-extern const SlotVT slot_yent;
-extern const SlotVT slot_arianna;
 
 static void top5(const float *l, int n, const char *tag) {
     int idx[5] = {0};
@@ -34,23 +31,24 @@ int main(void) {
     nt_qmv_set_thread_min(262144);
 
     Slot slots[3] = {
-        { .vt = &slot_leo,     .name = "leo",
+        { .vt = &gwtf_janus_backend,     .name = "leo",
           .gguf = "weights/leo_janus176m_f16.gguf",
           .temp = 0.7f, .top_p = 0.9f, .top_k = 0,  .rep_penalty = 1.3f },
-        { .vt = &slot_yent,    .name = "yent",
+        { .vt = &gwtf_janus_backend,    .name = "yent",
           .gguf = "weights/yent_janus176m_f16.gguf",
           .temp = 0.9f, .top_p = 0.9f, .top_k = 40, .rep_penalty = 1.3f },
-        { .vt = &slot_arianna, .name = "arianna",
+        { .vt = &gwtf_resonance_backend, .name = "arianna",
           .gguf = "weights/arianna_resonance_v3_f16.gguf",
           .temp = 0.7f, .top_p = 1.0f, .top_k = 0,  .rep_penalty = 1.4f },
     };
 
     for (int i = 0; i < 3; i++) {
-        if (slots[i].vt->load(slots[i].gguf)) {
+        slots[i].inst = slots[i].vt->create(slots[i].gguf);
+        if (!slots[i].inst) {
             fprintf(stderr, "slot %s: load failed\n", slots[i].name);
             return 1;
         }
-        slots[i].vt->cfg(&slots[i].V, &slots[i].E, &slots[i].H, &slots[i].D,
+        slots[i].vt->cfg(slots[i].inst, &slots[i].V, &slots[i].E, &slots[i].H, &slots[i].D,
                          &slots[i].B, &slots[i].M, &slots[i].T, &slots[i].R);
         slots[i].loaded = 1;
     }
@@ -74,17 +72,17 @@ int main(void) {
         float *logits = calloc((size_t)slots[i].V, sizeof(float));
         float *hidden = calloc((size_t)slots[i].E, sizeof(float));
         if (!logits || !hidden) { fprintf(stderr, "oom\n"); return 1; }
-        slots[i].vt->prefill(t, 4, logits, hidden);
+        slots[i].vt->prefill(slots[i].inst, t, 4, logits, hidden);
         int finite = 1;
         for (int k = 0; k < slots[i].V; k++)
             if (!(logits[k] == logits[k])) { finite = 0; break; }
         printf("%s (finite=%s)\n", slots[i].name, finite ? "yes" : "NO");
         top5(logits, slots[i].V, "prefill");
-        slots[i].vt->decode(t[3], 4, logits, hidden);
+        slots[i].vt->decode(slots[i].inst, t[3], 4, logits, hidden);
         top5(logits, slots[i].V, "decode");
         free(logits); free(hidden);
     }
 
-    for (int i = 0; i < 3; i++) slots[i].vt->release();
+    for (int i = 0; i < 3; i++) slots[i].vt->destroy(slots[i].inst);
     return 0;
 }

@@ -18,21 +18,20 @@
 #include "notorch.h"
 #include "ariannamethod.h"
 
-extern const SlotVT slot_leo;
-extern const SlotVT slot_yent;
-extern const SlotVT slot_arianna;
-
 /* Per-voice regimes. These are entry conditions, not preferences: a single
  * shared temperature erases the effect this organism exists to observe
  * (dario_paper_v2.md:127,145). Champions from cmd/internal/voices/voices.go:50-64
  * and scripts/arianna2arianna.sh:21-28 — treated as a starting hypothesis, since
- * the v2 sweep did not re-derive the exact cells. */
+ * the v2 sweep did not re-derive the exact cells.
+ *
+ * Slots are filled at runtime: two Januses side by side are two instances of
+ * one backend, not two compile-time symbols. The other five slots are open. */
 static Slot g_slots[GWTF_MAX_SLOTS] = {
-    { .vt = &slot_leo,     .name = "leo",     .gguf = "weights/leo_janus176m_f16.gguf",
+    { .vt = &gwtf_janus_backend,     .name = "leo",     .gguf = "weights/leo_janus176m_f16.gguf",
       .temp = 0.7f, .top_p = 1.0f, .top_k = 0,  .rep_penalty = 1.3f },
-    { .vt = &slot_yent,    .name = "yent",    .gguf = "weights/yent_janus176m_f16.gguf",
+    { .vt = &gwtf_janus_backend,     .name = "yent",    .gguf = "weights/yent_janus176m_f16.gguf",
       .temp = 0.9f, .top_p = 1.0f, .top_k = 40, .rep_penalty = 1.3f },
-    { .vt = &slot_arianna, .name = "arianna", .gguf = "weights/arianna_resonance_v3_f16.gguf",
+    { .vt = &gwtf_resonance_backend, .name = "arianna", .gguf = "weights/arianna_resonance_v3_f16.gguf",
       .temp = 0.7f, .top_p = 1.0f, .top_k = 0,  .rep_penalty = 1.4f },
 };
 static int g_n_slots = 3;
@@ -111,27 +110,27 @@ static int speak(Slot *s, const char *prompt, int max_tok,
     float *hidden = calloc((size_t)E, sizeof(float));
     if (!ctx || !logits || !hidden) return -1;
 
-    int len = raw ? s->vt->encode(prompt, ctx, T)
-                  : s->vt->chat_wrap(prompt, ctx, T);
+    int len = raw ? s->vt->encode(s->inst, prompt, ctx, T)
+                  : s->vt->chat_wrap(s->inst, prompt, ctx, T);
     if (len <= 0) { free(ctx); free(logits); free(hidden); return -1; }
     if (len > T) len = T;
 
-    s->vt->prefill(ctx, len, logits, hidden);
+    s->vt->prefill(s->inst, ctx, len, logits, hidden);
 
-    int stop = s->vt->chat_stop();
-    int pmax = s->vt->printable_max();
+    int stop = s->vt->chat_stop(s->inst);
+    int pmax = s->vt->printable_max(s->inst);
     int written = 0;
     out[0] = '\0';
 
     for (int step = 0; step < max_tok && len < T; step++) {
-        s->vt->apply(logits, inject_alpha, inject_beta);
+        s->vt->apply(s->inst, logits, inject_alpha, inject_beta);
         int next = sample(logits, V, s, ctx, len);
 
         if (stop >= 0 && next == stop) break;
 
         if (next < pmax) {
             char piece[64];
-            int nb = s->vt->detok(&next, 1, piece, (int)sizeof(piece) - 1);
+            int nb = s->vt->detok(s->inst, &next, 1, piece, (int)sizeof(piece) - 1);
             if (nb > 0) {
                 piece[nb] = '\0';
                 if (written + nb < out_sz - 1) {
@@ -143,12 +142,63 @@ static int speak(Slot *s, const char *prompt, int max_tok,
         }
 
         ctx[len++] = next;
-        s->vt->age(next);
-        s->vt->decode(next, len - 1, logits, hidden);
+        s->vt->age(s->inst, next);
+        s->vt->decode(s->inst, next, len - 1, logits, hidden);
     }
 
     free(ctx); free(logits); free(hidden);
+
+    /* Cut at the last sentence end rather than mid-word. Port of clean_voice in
+     * arianna2arianna.sh:85-92, with the abbreviation guard from
+     * yent_forward.h:76 — a period after a single isolated letter is a clipped
+     * word ("the inner v."), not a thought boundary. */
+    if (written > 0) {
+        int cut = -1;
+        for (int i = 24; i < written; i++) {
+            char c = out[i];
+            if (c != '.' && c != '!' && c != '?') continue;
+            int j = i - 1, run = 0;
+            while (j >= 0 && ((out[j] >= 'a' && out[j] <= 'z') ||
+                              (out[j] >= 'A' && out[j] <= 'Z'))) { run++; j--; }
+            if (run == 1 && (j < 0 || out[j] == ' ')) continue;
+            cut = i;
+        }
+        if (cut > 0) { out[cut + 1] = '\0'; written = cut + 1; }
+    }
     return written;
+}
+
+/* ── how hard a voice was pulled ───────────────────────────────────────────
+ * Not |destiny|: that saturates. Janus embedding norms push it straight into
+ * the 1.5 clamp (yent_forward.h:141) after a single sentence, so it carries no
+ * ordering, and it is not comparable across bodies with different vocabularies.
+ *
+ * Measure instead what the concept actually means by "who was resonated most":
+ * how far the injected direction moved the distribution this voice was about to
+ * emit. Shannon entropy of the tilted distribution minus the untilted one, in
+ * nats, normalised by log V so a 32768-vocabulary voice and a 16384 one are on
+ * one scale. Sign is kept: a tilt that sharpens reads negative, one that opens
+ * the field reads positive; the pull is its magnitude. */
+static float entropy_norm(const float *logits, int V, float temp) {
+    float *p = malloc((size_t)V * sizeof(float));
+    if (!p) return 0.0f;
+    for (int i = 0; i < V; i++) p[i] = logits[i] / temp;
+    softmax_inplace(p, V);
+    float h = 0;
+    for (int i = 0; i < V; i++) if (p[i] > 1e-12f) h -= p[i] * logf(p[i]);
+    free(p);
+    return h / logf((float)V);
+}
+
+static float resonance_shift(Slot *s, const float *base, float alpha, float beta) {
+    float *tilted = malloc((size_t)s->V * sizeof(float));
+    if (!tilted) return 0.0f;
+    memcpy(tilted, base, (size_t)s->V * sizeof(float));
+    s->vt->apply(s->inst, tilted, alpha, beta);
+    float h0 = entropy_norm(base,   s->V, s->temp);
+    float h1 = entropy_norm(tilted, s->V, s->temp);
+    free(tilted);
+    return h1 - h0;
 }
 
 static Slot *find_slot(const char *name) {
@@ -159,30 +209,119 @@ static Slot *find_slot(const char *name) {
 
 static int load_all(void) {
     for (int i = 0; i < g_n_slots; i++) {
-        if (g_slots[i].vt->load(g_slots[i].gguf)) {
+        g_slots[i].inst = g_slots[i].vt->create(g_slots[i].gguf);
+        if (!g_slots[i].inst) {
             fprintf(stderr, "slot %s: load failed (%s)\n", g_slots[i].name, g_slots[i].gguf);
             return 1;
         }
-        g_slots[i].vt->cfg(&g_slots[i].V, &g_slots[i].E, &g_slots[i].H, &g_slots[i].D,
+        g_slots[i].vt->cfg(g_slots[i].inst,
+                           &g_slots[i].V, &g_slots[i].E, &g_slots[i].H, &g_slots[i].D,
                            &g_slots[i].B, &g_slots[i].M, &g_slots[i].T, &g_slots[i].R);
         g_slots[i].loaded = 1;
     }
     return 0;
 }
 
+/* ── the flow ──────────────────────────────────────────────────────────────
+ * A human utterance enters every slot. Whoever it pulled hardest speaks; that
+ * turn enters every OTHER slot — never its own, because a voice's own output is
+ * echo, not evidence (INJECTION_CONTRACT.md:52-58). Loop energy starts at 1.0
+ * from the human and decays each turn; below the floor the current goes quiet.
+ * The field has its own decay underneath this one (|destiny| x 0.95 per update,
+ * yent_forward.h:140) — two independent fades, one per layer. */
+#define FLOW_DECAY  0.85f
+#define FLOW_FLOOR  0.15f
+
+static void flow(const char *human, int max_turns, int max_tok,
+                 float alpha, float beta) {
+    printf("\n\033[1mhuman:\033[0m %s\n", human);
+
+    for (int i = 0; i < g_n_slots; i++) g_slots[i].vt->inject(g_slots[i].inst, human);
+
+    float energy = 1.0f;
+    char utterance[1 << 16];
+    const char *last = human;
+    int prev = -1, turn = 0;
+
+    while (energy >= FLOW_FLOOR && turn < max_turns) {
+        /* Who was moved most by what was just said. Each voice prefills the
+         * last utterance and reports how far the tilt shifts its own next-token
+         * distribution. */
+        int   pick = -1;
+        float best = -1.0f;
+        float shift[GWTF_MAX_SLOTS] = {0};
+
+        for (int i = 0; i < g_n_slots; i++) {
+            if (i == prev) continue;              /* nobody answers themselves */
+            Slot *s = &g_slots[i];
+            int *ctx = malloc(sizeof(int) * (size_t)s->T);
+            float *lg = calloc((size_t)s->V, sizeof(float));
+            float *hd = calloc((size_t)s->E, sizeof(float));
+            if (!ctx || !lg || !hd) { free(ctx); free(lg); free(hd); continue; }
+            int n = s->vt->chat_wrap(s->inst, last, ctx, s->T);
+            if (n > 0) {
+                if (n > s->T) n = s->T;
+                s->vt->prefill(s->inst, ctx, n, lg, hd);
+                shift[i] = resonance_shift(s, lg, alpha, beta);
+                float mag = fabsf(shift[i]);
+                if (mag > best) { best = mag; pick = i; }
+            }
+            free(ctx); free(lg); free(hd);
+        }
+        if (pick < 0) break;
+
+        printf("\n  pull:");
+        for (int i = 0; i < g_n_slots; i++) {
+            if (i == prev) printf(" %s —", g_slots[i].name);   /* just spoke, not voting */
+            else           printf(" %s %+.5f%s", g_slots[i].name, shift[i], i == pick ? "*" : "");
+        }
+        printf("   energy %.3f\n", energy);
+
+        Slot *sp = &g_slots[pick];
+        int n = speak(sp, last, max_tok, alpha * energy, beta * energy, 0,
+                      utterance, sizeof(utterance));
+        if (n <= 0) break;
+
+        printf("\033[1m%s:\033[0m %s\n", sp->name, utterance);
+
+        /* Everyone but the speaker takes it in. */
+        for (int i = 0; i < g_n_slots; i++)
+            if (i != pick) g_slots[i].vt->inject(g_slots[i].inst, utterance);
+
+        last   = utterance;
+        prev   = pick;
+        energy *= FLOW_DECAY;
+        turn++;
+    }
+    if (energy < FLOW_FLOOR)
+        printf("\n  the current goes quiet after %d turns — energy %.3f below floor %.2f\n",
+               turn, energy, FLOW_FLOOR);
+    else
+        printf("\n  stopped after %d turns — turn budget exhausted, energy still %.3f\n",
+               turn, energy);
+}
+
 int main(int argc, char **argv) {
     unsigned seed = 1;
-    int max_tok = 60, raw = 0;
+    int max_tok = 60, raw = 0, max_turns = 8;
+    float alpha = 5.0f, beta = 2.0f;
     const char *mode = NULL, *who = NULL, *prompt = NULL;
 
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--speak") && i + 2 < argc) { mode = "speak"; who = argv[++i]; prompt = argv[++i]; }
+        else if (!strcmp(argv[i], "--flow") && i + 1 < argc) { mode = "flow"; prompt = argv[++i]; }
         else if (!strcmp(argv[i], "--raw"))                raw = 1;
         else if (!strcmp(argv[i], "--seed") && i + 1 < argc) seed = (unsigned)atoi(argv[++i]);
         else if (!strcmp(argv[i], "-n") && i + 1 < argc)     max_tok = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--turns") && i + 1 < argc) max_turns = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--alpha") && i + 1 < argc) alpha = (float)atof(argv[++i]);
+        else if (!strcmp(argv[i], "--beta") && i + 1 < argc)  beta = (float)atof(argv[++i]);
     }
     if (!mode) {
-        fprintf(stderr, "usage: %s --speak <leo|yent|arianna> \"prompt\" [--raw] [--seed N] [-n TOK]\n", argv[0]);
+        fprintf(stderr,
+            "usage: %s --speak <leo|yent|arianna> \"prompt\" [--raw] [--seed N] [-n TOK]\n"
+            "       %s --flow \"what you want to say\" [--turns N] [--alpha F] [--beta F]\n",
+            argv[0], argv[0]);
         return 2;
     }
 
@@ -193,6 +332,13 @@ int main(int argc, char **argv) {
 
     if (load_all()) return 1;
     srand(seed);
+
+    if (!strcmp(mode, "flow")) {
+        flow(prompt, max_turns, max_tok, alpha, beta);
+        for (int i = 0; i < g_n_slots; i++)
+            if (g_slots[i].inst) g_slots[i].vt->destroy(g_slots[i].inst);
+        return 0;
+    }
 
     Slot *s = find_slot(who);
     if (!s) { fprintf(stderr, "no slot named '%s'\n", who); return 2; }
@@ -209,6 +355,7 @@ int main(int argc, char **argv) {
            s->temp, s->top_k, s->top_p, s->rep_penalty, seed, n, el);
     printf("%s\n", n > 0 ? out : "(nothing)");
 
-    for (int i = 0; i < g_n_slots; i++) g_slots[i].vt->release();
+    for (int i = 0; i < g_n_slots; i++)
+        if (g_slots[i].inst) g_slots[i].vt->destroy(g_slots[i].inst);
     return 0;
 }
