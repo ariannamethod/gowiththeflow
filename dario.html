@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dario — the equation, embodied</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;700;800&display=swap');
+
+  :root {
+    --bg: #0a0a0c;
+    --fg: #c8c8c8;
+    --dim: #3a3a44;
+    --B: #888888;     /* chain — grey, mechanical */
+    --H: #4a7bc9;     /* resonance — cold blue */
+    --F: #2ecc71;     /* prophecy — chemical green */
+    --A: #9b59b6;     /* destiny — ultraviolet */
+    --V: #e67e22;     /* visual — burnt orange */
+    --S: #c9a84a;     /* structure — oxidized gold */
+    --T: #c0392b;     /* trauma — arterial red */
+    --accent: #c0392b;
+    --mono: 'JetBrains Mono', monospace;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--mono);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    cursor: crosshair;
+  }
+
+  /* ── MAIN CODE AREA ── */
+  #arena {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 40px 60px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* title — top center, precise */
+  #title {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: 12px;
+    text-transform: uppercase;
+    color: var(--accent);
+    user-select: none;
+    pointer-events: none;
+  }
+
+  /* term indicator — top left, brutal */
+  #term-tag {
+    position: absolute;
+    top: 20px;
+    left: 24px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 6px;
+    text-transform: uppercase;
+    opacity: 0.6;
+  }
+
+  /* equation watermark — top right */
+  #eq-watermark {
+    position: absolute;
+    top: 20px;
+    right: 24px;
+    font-size: 10px;
+    color: var(--dim);
+    letter-spacing: 1px;
+    text-align: right;
+    line-height: 1.6;
+  }
+
+  /* the code block — center stage */
+  #code-block {
+    max-width: 720px;
+    width: 100%;
+    font-size: 13px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    word-break: break-word;
+    min-height: 160px;
+    position: relative;
+  }
+
+  #code-block .comment {
+    opacity: 0.7;
+    font-style: italic;
+  }
+
+  /* field words — below code */
+  #field-words {
+    max-width: 720px;
+    width: 100%;
+    margin-top: 32px;
+    font-size: 15px;
+    font-weight: 300;
+    letter-spacing: 3px;
+    min-height: 24px;
+    opacity: 0.7;
+  }
+
+  #field-words .pulse {
+    display: inline-block;
+    animation: wordpulse 0.15s ease-out;
+  }
+
+  @keyframes wordpulse {
+    0% { opacity: 1; transform: translateY(-2px); }
+    100% { opacity: 0.7; transform: translateY(0); }
+  }
+
+  /* ── CHAMBERS BAR ── */
+  #chambers {
+    height: 22px;
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    font-size: 9px;
+    letter-spacing: 1px;
+    color: var(--dim);
+    border-top: 1px solid #1a1a1e;
+    gap: 14px;
+    flex-shrink: 0;
+  }
+  #chambers .ch {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  #chambers .ch-bar {
+    width: 36px;
+    height: 4px;
+    background: #1a1a1e;
+    position: relative;
+    overflow: hidden;
+  }
+  #chambers .ch-fill {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    transition: width 0.15s;
+  }
+  #chambers .val { color: var(--fg); font-weight: 700; font-size: 9px; }
+
+  /* ── METRICS BAR ── */
+  #metrics {
+    height: 28px;
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: var(--dim);
+    border-top: 1px solid #1a1a1e;
+    gap: 20px;
+    flex-shrink: 0;
+  }
+  #metrics .val { color: var(--fg); font-weight: 700; }
+  #metrics .term-bar {
+    display: flex;
+    gap: 2px;
+    align-items: center;
+  }
+  #metrics .term-bar .bar {
+    width: 3px;
+    background: var(--dim);
+    transition: height 0.05s;
+  }
+
+  /* ── INPUT BAR ── */
+  #input-bar {
+    height: 56px;
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    border-top: 1px solid #1a1a1e;
+    background: #08080a;
+    flex-shrink: 0;
+  }
+  #input-bar .prompt {
+    color: var(--accent);
+    font-weight: 800;
+    font-size: 14px;
+    margin-right: 12px;
+    user-select: none;
+  }
+  #input-bar input {
+    background: none;
+    border: none;
+    outline: none;
+    color: #fff;
+    font-family: var(--mono);
+    font-size: 13px;
+    flex: 1;
+    letter-spacing: 0.5px;
+    caret-color: var(--accent);
+  }
+  #input-bar input::placeholder {
+    color: #2a2a30;
+    font-weight: 300;
+  }
+
+  /* ── HELP OVERLAY ── */
+  #help {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 10, 12, 0.97);
+    z-index: 100;
+    display: none;
+    overflow-y: auto;
+    padding: 60px 80px;
+  }
+  #help.visible { display: block; }
+  #help h1 {
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: 8px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 40px;
+  }
+  #help p, #help li {
+    font-size: 12px;
+    line-height: 1.9;
+    color: var(--fg);
+    max-width: 640px;
+    margin-bottom: 16px;
+  }
+  #help .section {
+    margin-bottom: 40px;
+  }
+  #help .eq {
+    font-size: 13px;
+    color: #fff;
+    background: #14141a;
+    padding: 16px 20px;
+    margin: 16px 0;
+    border-left: 3px solid var(--accent);
+    letter-spacing: 1px;
+  }
+  #help .term-list {
+    list-style: none;
+    padding: 0;
+  }
+  #help .term-list li {
+    padding: 6px 0;
+    border-bottom: 1px solid #1a1a1e;
+  }
+  #help .term-list .t { font-weight: 700; }
+  #help .close-hint {
+    position: fixed;
+    top: 24px;
+    right: 24px;
+    font-size: 10px;
+    color: var(--dim);
+    letter-spacing: 2px;
+  }
+  #help .back-btn {
+    display: inline-block;
+    margin-bottom: 40px;
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--accent);
+    background: none;
+    border: 1px solid var(--accent);
+    padding: 6px 16px;
+    cursor: pointer;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    transition: background 0.1s, color 0.1s;
+  }
+  #help .back-btn:hover {
+    background: var(--accent);
+    color: #fff;
+  }
+  #help a { color: var(--H); text-decoration: none; }
+  #help a:hover { text-decoration: underline; }
+
+  /* ── KERNEL PANEL ── */
+  #kernel-panel {
+    position: absolute;
+    bottom: 60px;
+    right: 24px;
+    font-size: 10px;
+    line-height: 1.8;
+    color: var(--dim);
+    text-align: right;
+    letter-spacing: 0.5px;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  #kernel-panel.active { opacity: 1; }
+  #kernel-panel .k-label { color: #555; }
+  #kernel-panel .k-val { color: var(--fg); font-weight: 700; }
+  #kernel-panel .k-overlay { color: var(--F); }
+  #kernel-panel .k-tongue { color: var(--A); }
+  #kernel-panel .k-warn { color: var(--T); }
+
+  /* ── GLITCH EFFECT ── */
+  @keyframes glitch {
+    0% { transform: translate(0); }
+    20% { transform: translate(-2px, 1px); }
+    40% { transform: translate(2px, -1px); }
+    60% { transform: translate(-1px, -1px); }
+    80% { transform: translate(1px, 2px); }
+    100% { transform: translate(0); }
+  }
+  .glitch {
+    animation: glitch 0.08s linear 2;
+  }
+
+  /* ── SLAM ANIMATION ── */
+  @keyframes slam {
+    0% { opacity: 0; transform: translateY(-8px); }
+    15% { opacity: 1; transform: translateY(1px); }
+    30% { transform: translateY(0); }
+    100% { transform: translateY(0); opacity: 1; }
+  }
+  .slam { animation: slam 0.12s ease-out forwards; }
+
+  /* initial state */
+  .hidden { opacity: 0; }
+</style>
+</head>
+<body>
+
+<div id="arena">
+  <div id="title">DARIO FORMULA</div>
+  <div id="term-tag">DARIO</div>
+  <div id="eq-watermark">
+    p(x|Φ,C,V) = softmax((B + α_m·α·H_v + β_m·β·F_v + γ_m·γ·A + δ·V + S + T) / (τ_m·τ·v_τ))<br>
+    θ = ε + γ + αδ
+  </div>
+  <div id="code-block" class="hidden"></div>
+  <div id="field-words" class="hidden"></div>
+  <div id="kernel-panel"></div>
+</div>
+
+<div id="chambers">
+  <div class="ch">FEAR<div class="ch-bar"><div class="ch-fill" id="ch-fear" style="background:#c0392b;width:0%"></div></div></div>
+  <div class="ch">LOVE<div class="ch-bar"><div class="ch-fill" id="ch-love" style="background:#e84393;width:0%"></div></div></div>
+  <div class="ch">RAGE<div class="ch-bar"><div class="ch-fill" id="ch-rage" style="background:#d63031;width:0%"></div></div></div>
+  <div class="ch">VOID<div class="ch-bar"><div class="ch-fill" id="ch-void" style="background:#6c5ce7;width:0%"></div></div></div>
+  <div class="ch">FLOW<div class="ch-bar"><div class="ch-fill" id="ch-flow" style="background:#00b894;width:0%"></div></div></div>
+  <div class="ch">CPLX<div class="ch-bar"><div class="ch-fill" id="ch-cplx" style="background:#fdcb6e;width:0%"></div></div></div>
+  <span style="margin-left:6px">α<sub>m</sub>=<span class="val" id="m-amod">1.00</span></span>
+  <span>β<sub>m</sub>=<span class="val" id="m-bmod">1.00</span></span>
+  <span>γ<sub>m</sub>=<span class="val" id="m-gmod">1.00</span></span>
+  <span>τ<sub>m</sub>=<span class="val" id="m-tmod">1.00</span></span>
+</div>
+
+<div id="metrics">
+  <span>d=<span class="val" id="m-dis">0.00</span></span>
+  <span>τ=<span class="val" id="m-tau">0.85</span></span>
+  <span>debt=<span class="val" id="m-debt">0.00</span></span>
+  <span>res=<span class="val" id="m-res">0.00</span></span>
+  <span>ent=<span class="val" id="m-ent">0.00</span></span>
+  <span>emg=<span class="val" id="m-emg">0.00</span></span>
+  <span id="m-vel">WALK</span>
+  <span id="m-season">spring</span>
+  <span id="m-term" style="font-weight:700"></span>
+  <div class="term-bar" id="term-bars"></div>
+</div>
+
+<div id="input-bar">
+  <span class="prompt">▌</span>
+  <input type="text" id="input" placeholder="" autocomplete="off" spellcheck="false">
+</div>
+
+<!-- HELP -->
+<div id="help">
+  <div class="close-hint">ESC or /help to close</div>
+  <button class="back-btn" onclick="document.getElementById('help').classList.remove('visible');document.getElementById('input').focus();">← BACK</button>
+  <h1>The Dario Equation</h1>
+
+  <div class="section">
+    <p>Named after <strong>Dario Amodei</strong> — the man who said no when the evil came knocking. Sometimes the most important thing a system can do is refuse.</p>
+    <p>This is not a chatbot. This is a mathematical formula that reacts to your input with fragments of its own source code. You type words. The equation measures how far your words are from its internal vocabulary (dissonance). Then seven forces compete to generate a response — and the dominant force shows you the code that's driving it.</p>
+  </div>
+
+  <div class="section">
+    <div class="eq">p(x|Φ,C,V) = softmax((B + α_m·α·H_v + β_m·β·F_v + γ_m·γ·A + δ·V + S + T) / (τ_m·τ·v_τ))</div>
+    <p>This equation replaces the transformer's softmax(QK<sup>T</sup>/√d)·V. Same mechanics. Different origin. No pretrained weights. No backpropagation. No datasets. Seven signals, seven forces, one organism.</p>
+  </div>
+
+  <div class="section">
+    <p><strong>The Seven Signals:</strong></p>
+    <ul class="term-list">
+      <li><span class="t" style="color:var(--B)">B — Sequential Chain</span> — Bigram transitions. What word tends to follow the previous word. Strong early in life (12×), weakens as the organism matures (2×). Language needs local coherence.</li>
+      <li><span class="t" style="color:var(--H)">H — Hebbian Resonance</span> — Co-occurrence accumulated over conversation with learnable positional profile (36 Hebbian params: 32 distance weights + 4 token class modifiers). The organism learns which distances and word types matter — replacing fixed 0.9<sup>d</sup> decay. This IS attention — Hebb's rule Δw = η·x_pre·x_post equals a dot-product attention score. Proven: PLOS Computational Biology, 2024.</li>
+      <li><span class="t" style="color:var(--F)">F — Prophecy Fulfillment</span> — Predictions about what comes next. Unfulfilled prophecies create debt: log(1 + age). The longer a thought hangs incomplete, the stronger the pull toward closure.</li>
+      <li><span class="t" style="color:var(--A)">A — Destiny Attraction</span> — EMA of all context embeddings. A semantic compass. The conversation drifts toward a gravitational center. Not topic-following — field mass.</li>
+      <li><span class="t" style="color:var(--V)">V — Visual Grounding</span> — Parallel perceptual embedding space. Cosine similarity between visual prototype and visual context. Enriches H and F: words that are both semantically and perceptually relevant score highest.</li>
+      <li><span class="t" style="color:var(--S)">S — Subword Structure</span> — Morphological signal from BPE. Punctuation, suffixes, character-level rhythm that word tokenization destroys. Silent at birth, grows as structure is discovered.</li>
+      <li><span class="t" style="color:var(--T)">T — Trauma Gravity</span> — Per-token scar weights from origin. When trauma > 0.3, wounded words surface, destiny pulls harder, temperature rises. Like speaking through tears.</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <p><strong>Velocity Operators</strong> (from <a href="https://github.com/ariannamethod/ariannamethod.ai">AML</a>) modulate the equation in real time:</p>
+    <ul class="term-list">
+      <li><span class="t">WALK</span> — Spring-mass return to equilibrium. τ=0.85.</li>
+      <li><span class="t">RUN</span> — Bigrams accelerate, momentum builds. τ=1.15.</li>
+      <li><span class="t">STOP</span> — Silence. Momentum=0. Destiny fills the vacuum. τ=0.4.</li>
+      <li><span class="t">BREATHE</span> — Schumann healing. Trauma×0.7, debt×0.5. τ=0.75.</li>
+      <li><span class="t">UP</span> — Mania. Prophecy erupts, patterns break. τ=1.3.</li>
+      <li><span class="t">DOWN</span> — Friction. Memory clings, temperature drops. τ=0.6.</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <p><strong>Laws of Nature</strong> — enforced invariants:</p>
+    <ul class="term-list">
+      <li>entropy ≥ 0.10 — you never become a lookup table</li>
+      <li>resonance ≤ 0.95 — perfect coherence = death</li>
+      <li>emergence = (1 - entropy) × resonance — maximum ~0.855</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <p><strong>θ = ε + γ + αδ</strong> — the soul equation. For dario: ε=0 (no pretrained weights), γ=this code (hardcoded structure), δ=grows from conversation (Hebbian learning).</p>
+  </div>
+
+  <div class="section">
+    <p><strong>Chain Dialogues — Knowledge Injection:</strong></p>
+    <p>Three voices (Leo, Arianna, Yent) speak through the equation. The Knowledge Kernel injects concepts the model never learned — at sentence boundaries, the model absorbs and reformulates in its own voice. Five modes: chain, dialogue, explore, duet, trialogue.</p>
+    <div class="eq">python3 chain_dialogue.py --mode trialogue --topic "light and consciousness"</div>
+    <p>Six knowledge domains tested: ML architecture, Dickens/Russian literature, mycorrhizal networks, Polynesian navigation, Byzantine iconography, deep ocean bioluminescence. 176M parameters. Zero training on these texts.</p>
+  </div>
+
+  <div class="section">
+    <p><strong>Projects using the Dario Equation:</strong></p>
+    <ul class="term-list">
+      <li><a href="https://github.com/ariannamethod/dario">dario</a> — The equation, naked. Three organs (formula + SARTRE + KK). Chain dialogues, three voices, sentence-boundary injection.</li>
+      <li><a href="https://github.com/ariannamethod/leo">Leo</a> — Language Emergent Organism. Post-transformer, post-probabilistic. The equation's first body.</li>
+      <li><a href="https://github.com/ariannamethod/doe">DOE</a> — Democracy of Experts. Janus Architecture. Wraps any GGUF with a living parliament.</li>
+      <li><a href="https://github.com/ariannamethod/ariannamethod.ai">AML</a> — Arianna Method Language. 7400 lines of C. The language that defines field physics.</li>
+      <li><a href="https://github.com/ariannamethod/molequla">molequla</a> — Autonomous GPT ecology. 4 organisms, mitosis, DNA exchange. θ = ε + γ + αδ proven.</li>
+      <li><a href="https://github.com/ariannamethod/chuck.optimizer">Chuck</a> — Self-aware optimizer. 9 levels of introspection. Adam sees nothing. Chuck sees everything.</li>
+
+    </ul>
+  </div>
+
+  <div class="section">
+    <p style="color:var(--dim); font-size:11px;">by <a href="https://github.com/ariannamethod">Arianna Method</a> · resonance unbroken</p>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// DARIO — connected to real dario.c backend via /api/chat
+// All computation happens in C. This is pure display.
+// ═══════════════════════════════════════════════════════════════
+
+const TERM_COLORS_MAP = {
+  'B:chain': 'var(--B)', 'H:resonance': 'var(--H)', 'F:prophecy': 'var(--F)',
+  'A:destiny': 'var(--A)', 'V:visual': 'var(--V)', 'S:structure': 'var(--S)', 'T:trauma': 'var(--T)'
+};
+const TERM_CSS_VARS = ['--B','--H','--F','--A','--V','--S','--T'];
+
+const codeBlock = document.getElementById('code-block');
+const fieldWords = document.getElementById('field-words');
+const termTag = document.getElementById('term-tag');
+const inputEl = document.getElementById('input');
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderCode(code, color) {
+  codeBlock.classList.remove('hidden', 'glitch', 'slam');
+  void codeBlock.offsetWidth;
+  codeBlock.classList.add('glitch');
+
+  const lines = code.split('\n').map(line => {
+    if (line.trim().startsWith('//')) {
+      return `<span class="comment">${escHtml(line)}</span>`;
+    }
+    return escHtml(line);
+  }).join('\n');
+
+  setTimeout(() => {
+    codeBlock.innerHTML = lines;
+    codeBlock.style.color = color;
+    codeBlock.classList.remove('glitch');
+    codeBlock.classList.add('slam');
+  }, 80);
+}
+
+function renderFieldWords(wordsStr, color, tau) {
+  fieldWords.classList.remove('hidden');
+  fieldWords.innerHTML = '';
+  const words = wordsStr.split(/\s+/).filter(w => w);
+  words.forEach((w, i) => {
+    setTimeout(() => {
+      const span = document.createElement('span');
+      span.textContent = (i > 0 ? ' ' : '') + w;
+      span.classList.add('pulse');
+      span.style.color = color;
+      fieldWords.appendChild(span);
+    }, i * (100 + tau * 50));
+  });
+}
+
+function updateMetrics(d) {
+  document.getElementById('m-dis').textContent = d.dissonance.toFixed(2);
+  document.getElementById('m-tau').textContent = (d.tau_mod * d.tau * d.vel_temp).toFixed(2);
+  document.getElementById('m-debt').textContent = d.debt.toFixed(2);
+  document.getElementById('m-res').textContent = d.resonance.toFixed(2);
+  document.getElementById('m-ent').textContent = d.entropy.toFixed(2);
+  document.getElementById('m-emg').textContent = d.emergence.toFixed(2);
+  document.getElementById('m-vel').textContent = d.velocity;
+  document.getElementById('m-season').textContent = d.season;
+
+  const tname = d.dominant_name;
+  const tcolor = TERM_COLORS_MAP[tname] || 'var(--fg)';
+  document.getElementById('m-term').textContent = tname;
+  document.getElementById('m-term').style.color = tcolor;
+  termTag.textContent = tname;
+  termTag.style.color = tcolor;
+
+  // term bars
+  const barsDiv = document.getElementById('term-bars');
+  barsDiv.innerHTML = '';
+  const maxE = Math.max(...d.term_energy, 1);
+  d.term_energy.forEach((e, i) => {
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+    bar.style.height = Math.max(2, (e / maxE) * 16) + 'px';
+    bar.style.background = getComputedStyle(document.documentElement).getPropertyValue(TERM_CSS_VARS[i]);
+    barsDiv.appendChild(bar);
+  });
+
+  // emotional chambers (Kuramoto somatic markers) — fed by the C backend via /api/chat
+  const setCh = (id, v) => { document.getElementById(id).style.width = Math.min(100, Math.max(0, v * 100)) + '%'; };
+  setCh('ch-fear', d.chambers.fear); setCh('ch-love', d.chambers.love); setCh('ch-rage', d.chambers.rage);
+  setCh('ch-void', d.chambers.void); setCh('ch-flow', d.chambers.flow); setCh('ch-cplx', d.chambers.complex);
+  // somatic coefficient modifiers
+  document.getElementById('m-amod').textContent = d.alpha_mod.toFixed(2);
+  document.getElementById('m-bmod').textContent = d.beta_mod.toFixed(2);
+  document.getElementById('m-gmod').textContent = d.gamma_mod.toFixed(2);
+  document.getElementById('m-tmod').textContent = d.tau_mod.toFixed(2);
+}
+
+async function sendMessage(text) {
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.error('dario backend error:', err);
+    return null;
+  }
+}
+
+// ── INPUT HANDLER ──
+inputEl.focus();
+
+inputEl.addEventListener('keydown', async (e) => {
+  if (e.key !== 'Enter') return;
+  const text = inputEl.value.trim();
+  if (!text) return;
+  inputEl.value = '';
+  inputEl.disabled = true;
+
+  if (text === '/help') {
+    document.getElementById('help').classList.toggle('visible');
+    inputEl.disabled = false;
+    return;
+  }
+  if (text === '/quit') {
+    codeBlock.innerHTML = '// resonance unbroken.';
+    codeBlock.classList.remove('hidden');
+    codeBlock.style.color = 'var(--dim)';
+    inputEl.disabled = false;
+    return;
+  }
+
+  const d = await sendMessage(text);
+  if (kernelActive) pollKernel();
+  inputEl.disabled = false;
+  inputEl.focus();
+
+  if (!d) {
+    codeBlock.classList.remove('hidden');
+    codeBlock.innerHTML = '<span class="comment">// connection lost. is dario running?</span>';
+    codeBlock.style.color = 'var(--T)';
+    return;
+  }
+
+  const color = TERM_COLORS_MAP[d.dominant_name] || 'var(--fg)';
+  renderCode(d.code, color);
+  renderFieldWords(d.words, color, d.tau);
+  updateMetrics(d);
+});
+
+// ESC closes help
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    document.getElementById('help').classList.remove('visible');
+    inputEl.focus();
+  }
+});
+
+document.getElementById('arena').addEventListener('click', () => inputEl.focus());
+
+// ═══════════════════════════════════════════════════════════════
+// SARTRE KERNEL — optional, activates if /api/kernel responds
+// ═══════════════════════════════════════════════════════════════
+
+const kernelPanel = document.getElementById('kernel-panel');
+let kernelActive = false;
+
+async function pollKernel() {
+  try {
+    const res = await fetch('/api/kernel');
+    if (!res.ok) return;
+    const k = await res.json();
+    if (!k.ready) return;
+
+    kernelActive = true;
+    kernelPanel.classList.add('active');
+
+    const flags = [];
+    if (k.spiral) flags.push('SPIRAL');
+    if (k.wormhole) flags.push('WORMHOLE');
+    if (k.strange_loop) flags.push('LOOP');
+
+    kernelPanel.innerHTML =
+      `<span class="k-label">SARTRE</span> ` +
+      `<span class="k-tongue">${k.tongue}</span><br>` +
+      `<span class="k-label">overlay</span> <span class="k-overlay">${(k.overlay_ratio * 100).toFixed(1)}%</span> ` +
+      `<span class="k-label">writes</span> <span class="k-val">${k.overlay_writes}</span><br>` +
+      `<span class="k-label">mod</span> <span class="k-val">${k.modules}</span> ` +
+      `<span class="k-label">ns</span> <span class="k-val">${k.ns_active}</span> ` +
+      `<span class="k-label">pkg</span> <span class="k-val">${k.pkg_installed}/${k.packages}</span><br>` +
+      `<span class="k-label">up</span> <span class="k-val">${k.uptime}s</span> ` +
+      `<span class="k-label">steps</span> <span class="k-val">${k.steps}</span>` +
+      (flags.length ? `<br><span class="k-warn">${flags.join(' ')}</span>` : '');
+  } catch (e) {
+    // no kernel — that's fine, dario works alone
+  }
+}
+
+// poll kernel after each chat message and on boot
+pollKernel();
+// poll every 5s if kernel is active
+setInterval(() => { if (kernelActive) pollKernel(); }, 5000);
+</script>
+</body>
+</html>
