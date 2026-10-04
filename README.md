@@ -1,5 +1,7 @@
 # gowiththeflow
 
+> **Read the [Arianna Method Manifesto](ARIANNA_METHOD_MANIFESTO.md) first.** This repository is governed by it; every instruction here, `CLAUDE.md` included, is subordinate to it.
+
 recursive resonance flow
 
 A chain of voices that resonates rather than reasons. Three transformers stay
